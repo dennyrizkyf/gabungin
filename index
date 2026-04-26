@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gabungin Data</title>
+    <!-- Tailwind CSS untuk Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse untuk membaca/menulis CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- SheetJS untuk membaca/menulis Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        .table-container {
+            max-height: 300px;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+        th, td {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <!-- Toast Notifikasi Global -->
+    <div id="notification" class="fixed top-24 right-6 z-[100] px-6 py-3 rounded-lg shadow-xl text-sm font-semibold hidden transition-all duration-300"></div>
+
+    <div class="max-w-6xl mx-auto p-6">
+        <!-- Header -->
+        <header class="sticky top-0 z-50 bg-gray-50/95 backdrop-blur-md pb-4 pt-6 -mt-6 mb-8 border-b">
+            <h1 class="text-3xl font-bold text-blue-700 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+                Gabungin Data
+            </h1>
+            <p class="text-gray-600 mt-2">Aplikasi penggabung data ini berjalan 100% lokal di browser Anda. Tidak ada data yang diunggah ke internet. Mendukung format <b>.csv</b> dan <b>.xlsx</b> untuk <b>berbagai jumlah dataset</b>.</p>
+        </header>
+
+        <!-- Area Upload Dinamis -->
+        <div id="file-list" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+            <!-- Form Upload akan di-render menggunakan JavaScript -->
+        </div>
+
+        <div class="mb-8 flex flex-wrap gap-4">
+            <button id="add-file-btn" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md font-medium hover:bg-gray-50 transition flex items-center gap-2 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                Tambah Dataset Lainnya
+            </button>
+            <button id="reset-btn" class="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-md font-medium hover:bg-red-100 transition flex items-center gap-2 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Reset Semua Data
+            </button>
+        </div>
+
+        <!-- Pengaturan Penggabungan -->
+        <div id="merge-settings" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8 hidden">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2">Pengaturan Penggabungan</h2>
+            
+            <div class="mb-6">
+                <label class="block text-gray-700 font-medium mb-2">Metode Penggabungan:</label>
+                <div class="flex gap-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="mode" value="merge" checked class="w-4 h-4 text-blue-600">
+                        <span>Tambah Variabel (Merge/Join)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="mode" value="append" class="w-4 h-4 text-blue-600">
+                        <span>Tambah Baris (Append)</span>
+                    </label>
+                </div>
+                <p id="mode-desc" class="text-sm text-gray-500 mt-2">Menggabungkan data secara horizontal berdasarkan kolom kunci (ID) yang sama pada semua dataset.</p>
+            </div>
+
+            <!-- Setingan Merge (Hanya muncul jika mode Merge) -->
+            <div id="merge-options" class="bg-gray-50 p-4 rounded-lg border mb-6">
+                <div id="dynamic-keys-container" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
+                    <!-- Pilihan Key untuk setiap file akan muncul di sini -->
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Jenis Gabungan (Join Type):</label>
+                    <select id="joinType" class="w-full md:w-1/2 border-gray-300 rounded-md shadow-sm p-2 border">
+                        <option value="left">Left Join (Data Dataset 1 dipertahankan)</option>
+                        <option value="inner">Inner Join (Hanya data yang irisan di semua dataset)</option>
+                        <option value="outer">Outer Join (Gabungkan semua data)</option>
+                    </select>
+                </div>
+            </div>
+
+            <button id="process-btn" class="bg-blue-600 text-white px-6 py-2 rounded-md font-medium hover:bg-blue-700 transition w-full md:w-auto">
+                Proses Penggabungan
+            </button>
+        </div>
+
+        <!-- Hasil Penggabungan -->
+        <div id="result-section" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hidden">
+            <h2 class="text-xl font-semibold mb-4">Hasil Penggabungan</h2>
+            <p class="text-sm font-medium text-blue-600 mb-2" id="info-result"></p>
+            
+            <div class="table-container border rounded mb-6">
+                <table class="min-w-full divide-y divide-gray-200 text-sm" id="table-result"></table>
+            </div>
+
+            <div class="flex flex-col md:flex-row gap-4 items-center bg-gray-50 p-4 rounded-lg border">
+                <div class="flex-1 w-full">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nama File Output:</label>
+                    <input type="text" id="output-filename" class="w-full border-gray-300 rounded-md shadow-sm p-2 border">
+                </div>
+                <div class="flex gap-2 w-full md:w-auto mt-4 md:mt-0">
+                    <button id="dl-csv" class="flex-1 md:flex-none bg-green-600 text-white px-4 py-2 rounded-md font-medium hover:bg-green-700 transition">
+                        Download CSV
+                    </button>
+                    <button id="dl-excel" class="flex-1 md:flex-none bg-emerald-600 text-white px-4 py-2 rounded-md font-medium hover:bg-emerald-700 transition">
+                        Download Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-8 pt-6 pb-4 text-center text-sm text-gray-500">
+            Created by Den
+        </footer>
+    </div>
+
+    <script>
+        // State management dinamis
+        let state = {
+            files: [
+                { id: 1, data: null, cols: [], fileName: '' },
+                { id: 2, data: null, cols: [], fileName: '' }
+            ],
+            resultData: null, resultCols: []
+        };
+        let nextFileId = 3;
+
+        // --- Core Functions ---
+
+        function parseFile(file) {
+            return new Promise((resolve, reject) => {
+                const name = file.name.toLowerCase();
+                if (name.endsWith('.csv')) {
+                    Papa.parse(file, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            resolve({ data: results.data, columns: results.meta.fields });
+                        },
+                        error: function(err) { reject(err.message); }
+                    });
+                } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, {type: 'array'});
+                            const firstSheet = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[firstSheet];
+                            const json = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+                            if (json.length > 0) {
+                                resolve({ data: json, columns: Object.keys(json[0]) });
+                            } else {
+                                resolve({ data: [], columns: [] });
+                            }
+                        } catch (err) {
+                            reject("Gagal membaca Excel: " + err.message);
+                        }
+                    };
+                    reader.onerror = () => reject("Gagal membaca file");
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    reject("Format file tidak didukung. Gunakan CSV atau Excel.");
+                }
+            });
+        }
+
+        function renderTable(containerId, columns, data, limit = 5) {
+            const table = document.getElementById(containerId);
+            table.innerHTML = "";
+            if (!columns || columns.length === 0) return;
+
+            let thead = '<thead class="bg-gray-100"><tr>';
+            columns.forEach(col => {
+                thead += `<th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${col}</th>`;
+            });
+            thead += '</tr></thead>';
+            
+            let tbody = '<tbody class="bg-white divide-y divide-gray-200">';
+            const displayData = data.slice(0, limit);
+            displayData.forEach(row => {
+                tbody += '<tr>';
+                columns.forEach(col => {
+                    tbody += `<td class="px-3 py-2 text-xs text-gray-700">${row[col] !== undefined ? row[col] : ''}</td>`;
+                });
+                tbody += '</tr>';
+            });
+            tbody += '</tbody>';
+
+            table.innerHTML = thead + tbody;
+        }
+
+        function showNotification(msg, isError = false) {
+            const notif = document.getElementById('notification');
+            notif.textContent = msg;
+            notif.className = `fixed top-24 right-6 z-[100] px-6 py-3 rounded-lg shadow-xl text-sm font-semibold block border ${isError ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`;
+            setTimeout(() => { notif.classList.add('hidden'); notif.classList.remove('block'); }, 4000);
+        }
+
+        // --- Dinamic UI Functions ---
+
+        function renderFileList() {
+            const container = document.getElementById('file-list');
+            container.innerHTML = state.files.map((f, i) => `
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200" id="file-card-${f.id}">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">${i + 1}. ${i === 0 ? 'Dataset Utama' : 'Dataset Tambahan'}</h2>
+                        ${i >= 2 ? `<button onclick="removeFile(${f.id})" class="text-red-500 hover:text-red-700 text-sm font-medium">Hapus</button>` : ''}
+                    </div>
+                    <input type="file" id="file-${f.id}" data-id="${f.id}" accept=".csv, .xlsx, .xls" class="file-input block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-md file:border-0
+                        file:text-sm file:font-semibold
+                        ${i === 0 ? 'file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100' : 'file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100'} cursor-pointer
+                    "/>
+                    <div id="preview-${f.id}" class="mt-4 ${f.data ? '' : 'hidden'}">
+                        <p class="text-sm font-medium text-green-600 mb-2">Dimensi: ${f.data ? f.data.length : 0} Baris x ${f.cols ? f.cols.length : 0} Kolom</p>
+                        <div class="table-container border rounded">
+                            <table class="min-w-full divide-y divide-gray-200 text-sm" id="table-${f.id}"></table>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Attach listeners and re-render tables
+            state.files.forEach(f => {
+                document.getElementById(`file-${f.id}`).addEventListener('change', handleFileUpload);
+                if (f.data) {
+                    renderTable(`table-${f.id}`, f.cols, f.data);
+                }
+            });
+
+            checkReadyFiles();
+        }
+
+        document.getElementById('add-file-btn').addEventListener('click', () => {
+            state.files.push({ id: nextFileId++, data: null, cols: [], fileName: '' });
+            renderFileList();
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            if(confirm('Apakah Anda yakin ingin menghapus dan mereset semua data?')) {
+                // Cara paling ampuh dan bersih: Muat ulang halaman.
+                // Ini menjamin 100% memori, cache input browser, dan UI kembali ke kondisi awal tanpa sisa.
+                window.location.reload();
+            }
+        });
+
+        window.removeFile = function(id) {
+            state.files = state.files.filter(f => f.id !== id);
+            renderFileList();
+        };
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const id = parseInt(e.target.dataset.id);
+            const fileState = state.files.find(f => f.id === id);
+            
+            try {
+                const result = await parseFile(file);
+                fileState.data = result.data;
+                fileState.cols = result.columns;
+                fileState.fileName = file.name;
+                renderFileList();
+            } catch (err) { 
+                alert(err); 
+            }
+        }
+
+        function checkReadyFiles() {
+            const validFiles = state.files.filter(f => f.data !== null);
+            if (validFiles.length >= 2) {
+                document.getElementById('merge-settings').classList.remove('hidden');
+                updateSelectOptions();
+            } else {
+                document.getElementById('merge-settings').classList.add('hidden');
+            }
+        }
+
+        function updateSelectOptions() {
+            const validFiles = state.files.filter(f => f.data !== null);
+            const container = document.getElementById('dynamic-keys-container');
+            
+            container.innerHTML = validFiles.map((f, i) => `
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Kunci Dataset ${i + 1}:</label>
+                    <select id="key-${f.id}" class="w-full border-gray-300 rounded-md shadow-sm p-2 border">
+                        ${f.cols.map(c => `<option value="${c}">${c}</option>`).join('')}
+                    </select>
+                </div>
+            `).join('');
+            
+            // Coba temukan kolom yang sama di semua file untuk default
+            if (validFiles.length > 1) {
+                const common = validFiles[0].cols.filter(value => validFiles.every(f => f.cols.includes(value)));
+                if (common.length > 0) {
+                    validFiles.forEach(f => {
+                        document.getElementById(`key-${f.id}`).value = common[0];
+                    });
+                }
+            }
+        }
+
+        // Radio button mode ganti
+        document.querySelectorAll('input[name="mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const modeDesc = document.getElementById('mode-desc');
+                const mergeOptions = document.getElementById('merge-options');
+                if (e.target.value === 'merge') {
+                    modeDesc.innerText = "Menggabungkan data secara horizontal berdasarkan kolom kunci (ID) yang sama pada semua dataset.";
+                    mergeOptions.classList.remove('hidden');
+                } else {
+                    modeDesc.innerText = "Menumpuk semua dataset secara vertikal. Pastikan nama kolom identik.";
+                    mergeOptions.classList.add('hidden');
+                }
+            });
+        });
+
+        // --- Logika Pemrosesan Dinamis ---
+
+        function generateDefaultFilename() {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const sec = String(now.getSeconds()).padStart(2, '0');
+            return `${yyyy}${mm}${dd}_${hh}${min}${sec}_hasil_gabungin`;
+        }
+
+        document.getElementById('process-btn').addEventListener('click', () => {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const validFiles = state.files.filter(f => f.data !== null);
+            let result = [];
+            
+            if (validFiles.length < 2) {
+                showNotification("Minimal butuh 2 dataset untuk digabungkan.", true);
+                return;
+            }
+
+            if (mode === 'append') {
+                validFiles.forEach(f => {
+                    result = result.concat(f.data);
+                });
+            } else {
+                const joinType = document.getElementById('joinType').value;
+                result = [...validFiles[0].data];
+                const baseKey = document.getElementById(`key-${validFiles[0].id}`).value;
+                
+                // Gabungkan file berikutnya secara sekuensial
+                for(let i = 1; i < validFiles.length; i++) {
+                    const nextFile = validFiles[i];
+                    const nextKey = document.getElementById(`key-${nextFile.id}`).value;
+                    result = performMerge(result, nextFile.data, baseKey, nextKey, joinType);
+                }
+            }
+
+            if (result.length === 0) {
+                showNotification("Hasil penggabungan kosong. Periksa kembali kunci penggabungan.", true);
+                return;
+            }
+
+            state.resultData = result;
+            
+            // Ekstrak nama kolom baru
+            let colsSet = new Set();
+            result.forEach(row => Object.keys(row).forEach(k => colsSet.add(k)));
+            state.resultCols = Array.from(colsSet);
+
+            // Set default nama file secara dinamis
+            document.getElementById('output-filename').value = generateDefaultFilename();
+
+            // Tampilkan Hasil
+            document.getElementById('result-section').classList.remove('hidden');
+            document.getElementById('info-result').innerText = `Total Akhir: ${result.length} Baris x ${state.resultCols.length} Kolom`;
+            renderTable('table-result', state.resultCols, state.resultData, 10);
+            
+            showNotification("Data berhasil digabungkan!", false);
+        });
+
+        // Modifikasi pencegah bentrok nama kolom untuk N-File
+        function mergeObject(row1, row2, key1, key2) {
+            let combined = { ...row1 };
+            for (let k in row2) {
+                if (k === key2 && key1 === key2) continue; // Skip duplikat primary key
+                
+                let targetKey = (k === key2 && key1 !== key2) ? k : k;
+                
+                if (combined.hasOwnProperty(targetKey) && targetKey !== key1) {
+                    let counter = 2;
+                    while(combined.hasOwnProperty(`${targetKey}_${counter}`)) {
+                        counter++;
+                    }
+                    combined[`${targetKey}_${counter}`] = row2[k];
+                } else {
+                    combined[targetKey] = row2[k];
+                }
+            }
+            return combined;
+        }
+
+        function performMerge(d1, d2, k1, k2, type) {
+            let result = [];
+            let matchedD2 = new Set();
+
+            if (type === 'left' || type === 'inner' || type === 'outer') {
+                d1.forEach(row1 => {
+                    let matches = d2.map((row2, idx) => ({row2, idx})).filter(item => row1[k1] == item.row2[k2]);
+                    if (matches.length > 0) {
+                        matches.forEach(match => {
+                            result.push(mergeObject(row1, match.row2, k1, k2));
+                            matchedD2.add(match.idx);
+                        });
+                    } else if (type !== 'inner') {
+                        result.push({ ...row1 });
+                    }
+                });
+            }
+
+            if (type === 'outer') {
+                d2.forEach((row2, idx) => {
+                    if (matchedD2.has(idx)) return;
+                    result.push({ ...row2 }); // Unmatched dari kanan
+                });
+            }
+            return result;
+        }
+
+        // --- Logika Unduhan ---
+
+        document.getElementById('dl-csv').addEventListener('click', () => {
+            if (!state.resultData) return;
+            const filename = document.getElementById('output-filename').value || generateDefaultFilename();
+            const csv = Papa.unparse(state.resultData);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `${filename}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        document.getElementById('dl-excel').addEventListener('click', () => {
+            if (!state.resultData) return;
+            const filename = document.getElementById('output-filename').value || generateDefaultFilename();
+            const worksheet = XLSX.utils.json_to_sheet(state.resultData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Hasil");
+            XLSX.writeFile(workbook, `${filename}.xlsx`);
+        });
+
+        // Initialize UI
+        renderFileList();
+
+    </script>
+</body>
+</html>
